@@ -190,7 +190,7 @@ function jsLookup(options) {
 }
 
 
-function getCompilerOptionsFromTsConfig(tsConfig) {
+function getTsConfigOptionsForCompiler(tsConfig) {
   if (!ts) {
     ts = require('typescript');
   }
@@ -206,8 +206,8 @@ function getCompilerOptionsFromTsConfig(tsConfig) {
     debug('string tsconfig given, parsing');
 
     try {
-      const tsParsedConfig = ts.readJsonConfigFile(tsConfig, ts.sys.readFile);
-      compilerOptions = ts.parseJsonSourceFileConfigFileContent(tsParsedConfig, ts.sys, path.dirname(tsConfig)).options;
+      const configFromFileViaRead = ts.readJsonConfigFile(tsConfig, ts.sys.readFile);
+      compilerOptions = ts.parseJsonSourceFileConfigFileContent(configFromFileViaRead, ts.sys, path.dirname(tsConfig)).options;
       debug('successfully parsed tsconfig');
     } catch (e) {
       debug('could not parse tsconfig');
@@ -226,7 +226,7 @@ function getCompilerOptionsFromTsConfig(tsConfig) {
 function tsLookup({dependency, filename, tsConfig, noTypeDefinitions}) {
   debug('performing a typescript lookup');
 
-  let compilerOptions = getCompilerOptionsFromTsConfig(tsConfig);
+  let compilerOptions = getTsConfigOptionsForCompiler(tsConfig);
 
   // Preserve for backcompat. Consider removing this as a breaking change.
   if (!compilerOptions.module) {
@@ -290,7 +290,7 @@ function commonJSLookup(options) {
     return packageJson;
   }
 
-  const tsCompilerOptions = getCompilerOptionsFromTsConfig(tsConfig);
+  const tsCompilerOptions = getTsConfigOptionsForCompiler(tsConfig);
   const allowMixedJsAndTs = tsCompilerOptions.allowJs;
   let extensions = ['.js', '.jsx'];
   if (allowMixedJsAndTs) {
