@@ -3,6 +3,11 @@
 const path = require('path');
 const debug = require('debug')('cabinet');
 
+let resolveDependencyPath;
+const appModulePath = require('app-module-path');
+let webpackResolve;
+const isRelative = require('is-relative-path');
+
 /*
  * most js resolver are lazy-loaded (only required when needed)
  * e.g. dont load requirejs when we only have commonjs modules to resolve
@@ -12,15 +17,10 @@ const debug = require('debug')('cabinet');
 let getModuleType;
 let resolve;
 
+const sassLookup = require('sass-lookup');
 let amdLookup;
 const stylusLookup = require('stylus-lookup');
-const sassLookup = require('sass-lookup');
 let ts;
-
-let resolveDependencyPath;
-const appModulePath = require('app-module-path');
-let webpackResolve;
-const isRelative = require('is-relative-path');
 
 const defaultLookups = {
   '.js': jsLookup,
@@ -136,39 +136,6 @@ module.exports._getJSType = function(options = {}) {
   return getModuleType.sync(options.filename);
 };
 
-function getCompilerOptionsFromTsConfig(tsConfig) {
-  if (!ts) {
-    ts = require('typescript');
-  }
-
-  let compilerOptions = {};
-
-  debug('given typescript config: ', tsConfig);
-
-  if (!tsConfig) {
-    debug('no tsconfig given, defaulting');
-
-  } else if (typeof tsConfig === 'string') {
-    debug('string tsconfig given, parsing');
-
-    try {
-      const tsParsedConfig = ts.readJsonConfigFile(tsConfig, ts.sys.readFile);
-      compilerOptions = ts.parseJsonSourceFileConfigFileContent(tsParsedConfig, ts.sys, path.dirname(tsConfig)).options;
-      debug('successfully parsed tsconfig');
-    } catch (e) {
-      debug('could not parse tsconfig');
-      throw new Error('could not read tsconfig');
-    }
-  } else {
-    compilerOptions = ts.convertCompilerOptionsFromJson(tsConfig.compilerOptions).options;
-  }
-
-  debug('processed typescript config: ', tsConfig);
-  debug('processed typescript config type: ', typeof tsConfig);
-
-  return compilerOptions;
-}
-
 /**
  * @private
  * @param {Object} options
@@ -222,10 +189,44 @@ function jsLookup(options) {
   }
 }
 
+
+function getTsConfigOptionsForCompiler(tsConfig) {
+  if (!ts) {
+    ts = require('typescript');
+  }
+
+  let compilerOptions = {};
+
+  debug('given typescript config: ', tsConfig);
+
+  if (!tsConfig) {
+    debug('no tsconfig given, defaulting');
+
+  } else if (typeof tsConfig === 'string') {
+    debug('string tsconfig given, parsing');
+
+    try {
+      const configFromFileViaRead = ts.readJsonConfigFile(tsConfig, ts.sys.readFile);
+      compilerOptions = ts.parseJsonSourceFileConfigFileContent(configFromFileViaRead, ts.sys, path.dirname(tsConfig)).options;
+      debug('successfully parsed tsconfig');
+    } catch (e) {
+      debug('could not parse tsconfig');
+      throw new Error('could not read tsconfig');
+    }
+  } else {
+    compilerOptions = ts.convertCompilerOptionsFromJson(tsConfig.compilerOptions).options;
+  }
+
+  debug('processed typescript config: ', tsConfig);
+  debug('processed typescript config type: ', typeof tsConfig);
+
+  return compilerOptions;
+}
+
 function tsLookup({dependency, filename, tsConfig, noTypeDefinitions}) {
   debug('performing a typescript lookup');
 
-  let compilerOptions = getCompilerOptionsFromTsConfig(tsConfig);
+  let compilerOptions = getTsConfigOptionsForCompiler(tsConfig);
 
   // Preserve for backcompat. Consider removing this as a breaking change.
   if (!compilerOptions.module) {
@@ -289,7 +290,7 @@ function commonJSLookup(options) {
     return packageJson;
   }
 
-  const tsCompilerOptions = getCompilerOptionsFromTsConfig(tsConfig);
+  const tsCompilerOptions = getTsConfigOptionsForCompiler(tsConfig);
   const allowMixedJsAndTs = tsCompilerOptions.allowJs;
   let extensions = ['.js', '.jsx'];
   if (allowMixedJsAndTs) {
@@ -318,6 +319,14 @@ function commonJSLookup(options) {
   }
 
   return result;
+}
+
+function stripLoader(dependency) {
+  const exclamationLocation = dependency.indexOf('!');
+
+  if (exclamationLocation === -1) { return dependency; }
+
+  return dependency.slice(exclamationLocation + 1);
 }
 
 function resolveWebpackPath({dependency, filename, directory, webpackConfig}) {
@@ -375,10 +384,3 @@ function resolveWebpackPath({dependency, filename, directory, webpackConfig}) {
   }
 }
 
-function stripLoader(dependency) {
-  const exclamationLocation = dependency.indexOf('!');
-
-  if (exclamationLocation === -1) { return dependency; }
-
-  return dependency.slice(exclamationLocation + 1);
-}
